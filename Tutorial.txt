@@ -1,0 +1,204 @@
+#####################################################################################################
+# This is a guide on how to utilize for script in this directory for a multi-conformer TST workflows.
+# by Lauri Franzon
+#####################################################################################################
+
+# STEP 0: BEFORE YOU START USING ANY OF THE SCRIPTS, take a look inside all the bash scripts. Many of them start with the following vairable definitions:
+###################################################
+
+orcadir="/projappl/kurten/appl_public/orca_6_1_1_linux_x86-64_shared_openmpi418_avx2"
+snakepit="/users/lfranzon/ORCA_Workflow_Scripts/Snakepit"
+acc="kurten"
+
+orcadir is the location of the ORCA binaries, snakepit is the location of the "Snakepit" directory containing all the python scripts, and acc is the CSC project from which billing 
+units are utilized. You must change these variables to account for the location of your ORCA binaries, folder structure, and billing account. Once this is done for all the scripts 
+you are ready to start.
+
+# STEP 1: Find all the conformers by performing a global PES search.
+###################################################
+
+Make a xyz file for your molecule of choice using your preferred molecule builder software.
+Once you are in a folder with your xyz file (say molecule.xyz), run the script:
+
+runGOAT molecule.xyz
+(Alternatively runGOAT if molecule.xyz is the only xyz file in the folder)
+The script will ask you questions about what goes into the input file, and how much computational resources should be used.
+
+Suggested default options:
+Level of theory: XTB2
+Charge and multiplicity: 0 1 (0 2 if radical)
+Max energy cutoff: 15
+Geometry modifier: "y" if you need constraints for sampling of a transition state geometry, "n" otherwise.
+Time: 00:30:00 if there are less than 20 atoms
+Number of parallel processes: 2 
+Memory per core: 200
+
+The script will generate an ORCA input file titled molecule-Goat.inp, and a slurm submission file titled molecule-Goat.job. The latter will be submitted automatically.
+
+
+# STEP 2: Reoptimize all found conformers using DFT
+###################################################
+
+Once GOAT has finished running, take a look at the found geometries in the *finalensemble.xyz file. If they look sensible, use can run the script:
+
+post-GOAT (No keyword needed, the script knows how to find the ensemble file)
+
+The script is written to reoptimized all conformers using the B3LYP-D3/ma-def2-SVP level of theory. You may pick another method if you so choose by modifying the script, but note 
+that the ma-def2-SVP basis set is recommended as a default for general purpose DFT calculations by the ORCA manual. 
+
+Suggested default options (though these really depend on the size of the system and the number of conformers):
+Time: e.g. 12:00:00, 
+Number of parallel processes: 4
+Memory per core: 600
+Geometry constraints: "y" if you need constraints for sampling of a transition state geometry, "n" otherwise.
+
+The script will also ask you whether you want to run the geometry optimisations for each conformer in serial or parallell, by asking the following questions:
+"N conformers. Split calculations into subdirectories? (y/n)" (y for parallell, n for serial)
+"Number of conformers per job?"
+
+Note that running everything in parallell, i.e. choosing 1 conformer per job, is not always the most efficient option due to slurm queueing logic. The queuing algorithm limits the 
+number of jobs you are allowed to have running at the same time.
+
+
+# STEP 3: Uniqueness filtering of conformers
+###################################################
+
+Once all DFT reoptimizations have finished running, you may filter out all duplicate conformers as well as high-energy conformers, if desired. Three bash scripts are provided for this:
+
+getenergies "keyword" 
+rmsd "keyword"
+duplicates
+
+"keyword" here refers to a string shared by all titles of the conformer output files. E.g. If they are called molecule-conf1.out, molecule-conf2.out, etc., then any part of 
+"molecule-conf" may be used as the keyword. Be mindful that you may have other output files in the folder with similar names, e.g. othermol-conf1-Reopt.out. In this case the keyword 
+"mole" successfully selects only the correct files, but "mol" or "conf" do not.
+
+The getenergies script grabs the electronic energy, zero-point energy, Gibbs free energy, dipole moment, run duration time, and the number of optimization cycles from all the output 
+files, placing them in a file called "energies.txt". The rmsd script utilizes the final internal coordinates geometry printout in the ORCA output files to calculate the 
+root mean squared distance between all conformer pairs to evaluate the geometric similarity. This information is printed in a file called "RMSD.txt". The standardized internal 
+geometries of all conformers in alphabetical order are printed out in a file called "Geoms.int" if you want to take a look. Finally, the duplicates script used the information from 
+the previous two scripts to filter all conformers by uniqueness, and prints out some data for all unique conformers in the file "Unique.txt". THIS MEANS THAT getenergies AND rmsd 
+MUST BE RUN BEFORE duplicates.
+
+The rmsd script also asks for the number of methyl groups in the molecule, as well as the indices of their first H atoms. This is due to 120-degree rotations of -CH3 groups resulting 
+in chemically identical structures. The presence of such -CH3 rotamers does not impact MCTST rate coefficients, due to the same rotational symmetry always being present in both the 
+reactant and TS (see https://doi.org/10.1063/1.1597479 for a longer explanation). Providing the rmsd script with the correct H indices allows it to systematically check all -CH3 
+rotamers when evaluating the RMSD of a conformer pair in order to select the lowest value. 
+NOTE: In principle the same operation should be performed for 180-degree rotations of all -NO2 groups in the molecule, but this has not been implemented into the script yet. 
+Ask nicely if you require this feature.
+
+By default, the duplicate script considers two conformers duplicates if their geometries are closer than 0.02 Å in RMSD and closer than 0.00016 Hartree in energy. These cut-off 
+values may be adjusted with keywords. If you for example want to use a looser cut-off for geometry filtering, you may launch the script with:
+duplicates 0 0.05 0.00016
+
+Conformer pairs dangerously close to the cut-off values, or "Close-calls", are printed out by the script to encourage visual inspection of the geometries and fine-tuning of the 
+filtering parameters. 
+
+The first keyword controls energy-based filtering. 0 is the default value, which means that no high-energy conformers are filtered out. You can remove all conformers with relative 
+electronic energies above 10 kJ/mol by launching the script with:
+duplicates 10 0.02 0.00016
+
+
+# STEP 4: Copy unique geometries to a new directory
+###################################################
+
+Once the filtering scripts have been run and the Unique.txt file exists, you may copy the xyz files corresponding to the conformers listed in Unique.txt by running the script:
+
+Cpunique "Nameofthenewdirectory"
+
+Simple as that. 
+
+
+# STEP 5: Generate ORCA input files for the new set of conformers.
+###################################################
+
+Go to the next directory and run the script:
+
+NextLevelInput
+
+This script will ask you questions about the contents of the input file, and proceed to generate such an input file for each xyz file in the directory. If you only want to do this 
+for a subset of the files, you may run the script with a keyword:
+
+NextLevelInput right
+
+This will generate input files for all the xyz titled:
+molecule-confN-right.xyz
+but not the ones titled:
+molecule-confN-wrong.xyz
+
+The NextLevelInput script does not submit the input files. Instead, this is done with the script Orcabatch. The Orcabatch script may also be run with a keyword, similar to 
+NextLevelInput:
+
+Orcabatch right
+
+There is also a script called Orcascript, which submits a calculation for a single input file.
+
+
+# STEP 6: Performing a CCSD(T) single-point energy
+###################################################
+
+Let's say you are finished with optizing all your conformers with your reliable "final" combination of density functional and basis set. The next step of our conventional workflow is 
+to perform a CCSD(T) single-point energy evaluation for the global minimum. This MAY be done using the combination of NetLevelInput and Orcascript, but doing so is cumbersome due to 
+CCSD(T) calculations in ORCA typically having a very long keyword line. Furthermore CSC recommends running CCSD(T) calculations using local storage resources 
+(https://docs.csc.fi/apps/orca/), which necessitates a slightly different slurm submission file. For these reasons, a separate script is provided for running single-point energy 
+evaluations using either the CCSD(T)-F12/cc-pVDZ-F12 or DLPNO-CCSD(T)-F12/cc-pVDZ-F12 levels of theory (with the appropriate auxiliary basis sets) with TightSCF convergence criteria 
+for both and TightPNO DLPNO convergence for the latter. Use the script:
+
+runF12 keyword
+
+
+# STEP 7: Repeat all steps for the reaction transition state...
+###################################################
+
+...but this is not the time nor the place to teach basic computational reaction kinetics, or the subtle art of finding tricky transition states. 
+Ask your computational chemistry mentor.
+
+
+# STEP 8: Calculate temperature-dependent MCTST rate coefficients
+###################################################
+
+Let us instead skip to the fun part. Once you have your final DFT optimization and frequency calculations for all reactant and transition state conformers, your CCSD(T) single-point 
+energy evaluations for the global minima, and possibly also optimization + frequency results for IRC endpoint, you may use the provided MCTST scripts to calculate rate coefficients. 
+For convenience, you should copy all the relevant output files into a new folder before starting. The following flavour of MCTST are currently provided:
+
+MCTST		(For unimolecular reactions, with IRC endpoint energies evaluated using DFT)
+MCTST-CCIRC	(Same, but with CCSD(T) single point energy evaluations for IRC endpoints. Though strictly speaking this is a high cost for a tiny increase in accuracy.)
+MCTST-DFTonly	(For unimolecular reactions, with rates evaluated using only DFT energies)
+MCTST-BIMOLE	(A version of the 'base' MCTST script for bimolecular reactions. Association rates are evaluated using LRTST's dipole capture rate https://doi.org/10.1063/1.1899603)
+MCTSTG-BIMOLE	(A 'G' version of the MCTST-BIMOLE script for people who do their DFT optimizations using Gaussian. More G-compatible scritps can be provided if you ask really nicely.)
+
+Ensure that all your files are uniformly named. The scripts recognize which one is which though prefix and suffix keywords, which you provide once running the script. For example, if 
+your final DFT method is wB97X-D3 and your CCSD(T) method is CCSD(T)-F12, your files may have names like the following:
+
+Reactant-conf1-wB.out
+Reactant-conf2-wB.out
+Reactant-conf3-wB.out (global minimum)
+Reactant-conf4-wB-F12.out
+...
+TS-conf1-wB.out
+TS-conf2-wB.out (global minimum)
+TS-conf2-wB-F12.out
+TS-conf3-wB.out
+...
+
+Whichever version of the MCTST script you are using, it will ask you questions in order to recognize which file is which. Leave out the file extensions when specifying the full names 
+of the files (e.g. Reactant-conf4-wB-F12, not Reactant-conf4-wB-F12.out). When the scipt ask you for a "CCSD(T) file name extension", it would be F12 in the above example. Likewise, 
+the "Opt+Freq output file name ending", would be wB, the "Base name of REACTANT final conformer optimization" Reactant, and "Name of TRANSITION STATE final conformer optimization" TS. 
+
+When the questions are answered and all the correct files are found, a python script is rrun to calculate a MCTST rate coefficient at all temperatures at the specified interval at 
+distances of 1 K. The results are printed out in a file called "MCTSTRates.txt".
+
+
+# STEP 9: Fit your MCTST results to a function
+###################################################
+
+Once the MCTSTRates.txt file exist you may fit the results to a function that you can publish in your article. Run the following script to fit it to a Kooij expression 
+k(T) = A * T^n * exp(-E_A/T):
+
+Kooijft filename
+
+If no filename is provided, the script will assume it's MCTSTRates.txt. 
+
+Another alternative for a fitting funtion, which I may decide to support at a later point, is the modified Arrhenius expression k(T) = A * exp(-E_A/T) * exp(B/T^3), where the 
+additional exp(B/T^3) factor is utilized only for the tunneling correction. An example of this function being used can be found here: (https://doi.org/10.1021/acs.jpca.0c01079). 
+However, the GECKO-A mechanism format supports Arrhenius and Kooij expressions for k(T) by default, hence my preference for the latter. 
