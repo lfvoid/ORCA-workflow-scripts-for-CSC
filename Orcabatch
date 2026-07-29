@@ -1,0 +1,146 @@
+#!/bin/bash
+#Calling command: Orcabatch name
+
+#############################################################################################
+# Script for running a series of ORCA input files either in serial or in parallell.
+# Only works on the supercomputer ROIHU.
+#############################################################################################
+
+orcadir="/projappl/kurten/appl_public/orca_6_1_1_linux_x86-64_shared_openmpi418_avx2"
+
+f=$(echo $1)
+
+#sjstat -c
+#SJSTAT DOES NOT WORK ANYMORE! WHAT TO DO INSTEAD?
+
+calcnum=$(ls *$f*.inp | wc -l)
+batch=($(ls -1 *$f*.inp))
+
+echo "$calcnum jobs."
+echo "Give value for time (hh:mm:ss)"
+read TIME
+echo "How many computing cores? (128 per node)"
+read CORES
+echo "Memory per core?"
+read MEM
+echo "Select the partition: small, large, etc..."
+read QUEUE
+echo "name?"
+read NAME
+
+echo "Use Nino's project? y/n"
+read Nino
+if [ "$Nino" = "y" ]; then
+acc="project_2006383"
+else
+acc="kurten"
+fi
+
+SDIR=`pwd`
+
+echo "$calcnum conformers. Split calculations into subdirectories? (y/n)"
+read split
+
+#######################################################################################
+# IF SPLIT OPTION IS CHOSEN, THE CALCULATIONS ARE RUN IN SEPARATE TEMPORARY DIRECTORIES
+# THIS PART OF THE CODE IS HEAVILY "INSPIRED" BY THOMAS GOLIN-ALMEIDA
+#######################################################################################
+
+if [ "$split" == "y" ]; then # Enter information on how to split the calculation. 
+echo "Number of conformers per job?"
+read calcpjob
+
+makejobtemplate () {
+  echo "#!/bin/bash -l
+#SBATCH -J $NAME-b${k}
+#SBATCH -t $TIME
+#SBATCH --ntasks-per-node $CORES
+#SBATCH --nodes 1
+#SBATCH --account=$acc
+#SBATCH --mem-per-cpu=$MEM
+#SBATCH -p $QUEUE
+
+export ORCADIR=$orcadir
+module purge
+module load orca/6.1.1
+" > $NAME-batch.job
+}
+
+k=0; j=0; l=1
+mkdir Temp-${k}
+cd Temp-${k}
+makejobtemplate
+
+for f in ${batch[@]}; do
+    # Add conformer input file to temp folder and line to job file.
+    FILE=`echo "$f" | cut -d'.' -f1`
+    mv ../$FILE.inp .
+    echo "\$ORCADIR/orca $FILE.inp > $FILE.out" >> $NAME-batch.job
+    j=$((j+1)); l=$((l+1))
+
+    # Only create a new batch if we hit exactly $calcpjob, but NOT when l == $calcnum
+    if [ "$j" = "$calcpjob" ]; then
+        echo "seff \$SLURM_JOBID" >> $NAME-batch.job
+        echo "rm -f  \${SLURM_SUBMIT_DIR}/mpirun" >> $NAME-batch.job
+        echo "mv * .." >> $NAME-batch.job
+
+        k=$((k+1))
+        mv $NAME-batch.job $NAME-batch-${k}.job
+        sed -i "s/$NAME-batch/$NAME-batch-${k}/" $NAME-batch-${k}.job
+
+        # Submit job file
+        sbatch $NAME-batch-${k}.job
+
+        # Exit the folder, create a new one, and enter.
+        cd ..
+        mkdir Temp-${k}
+        cd Temp-${k}
+#        cp ../*.hess .
+        makejobtemplate
+        j=0
+    fi
+done
+
+# Final submission if any calculations remain unsubmitted
+if [ "$j" -gt 0 ]; then
+    echo "seff \$SLURM_JOBID" >> $NAME-batch.job
+    echo "mv * .." >> $NAME-batch.job
+
+    k=$((k+1))
+    mv $NAME-batch.job $NAME-batch-${k}.job
+    sed -i "s/$NAME-batch/$NAME-batch-${k}/" $NAME-batch-${k}.job
+
+    # Submit the final job
+    sbatch $NAME-batch-${k}.job
+fi
+
+else
+
+################################################################################
+# IF SPLIT OPTION IS NOT CHOSEN, ONLY ONE job FILE IS RUN IN THE LOCAL DIRECTORY
+################################################################################
+
+# Create .job file
+echo "#!/bin/bash -l
+#SBATCH -J $NAME
+#SBATCH -t $TIME
+#SBATCH --ntasks-per-node $CORES
+#SBATCH --nodes 1
+#SBATCH --account=$acc
+#SBATCH --mem-per-cpu=$MEM
+#SBATCH -p $QUEUE
+
+export ORCADIR=$orcadir
+module purge
+module load orca/6.1.1
+" > $NAME-batch.job
+
+for l in ${batch[@]}; do
+FILE=`echo "$l" | cut -d'.' -f1`
+        echo "\$ORCADIR/orca $FILE.inp > $FILE.out" >> $NAME-batch.job
+done
+echo "seff \$SLURM_JOBID" >> $NAME-batch.job
+
+sbatch $NAME-batch.job
+
+fi

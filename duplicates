@@ -1,0 +1,42 @@
+#!/bin/bash
+# Call the script using the command: duplicates Ecut RMSDT ET
+
+####################################################################################################################################
+# Script for confomer duplicate filterig once RMSD and energy files exist. Refer to rmsd and getenergies scripts for these.
+# NOTE: If you wish to perform duplicate filtering without removal of high-energy conformers, use Ecut=0.
+#####################################################################################################################################
+
+snakepit="/users/lfranzon/ORCA_Workflow_Scripts/Snakepit"
+
+# First command: (Electronic) Energy cutoff for removal of high-energy conformers in kJ/mol. If you wish to filter by G, the values will be in the output files for manual filtering.
+
+Ecut=$(echo $1)
+if [ -z "$Ecut" ]; then Ecut="0"; fi
+
+# Second command: RMSD threshold in Å for duplicate filtering. Default value is Möller's suggested threshold of 0.02.
+
+RMSDT=$(echo $2)
+if [ -z "$RMSDT" ]; then RMSDT="0.02"; fi
+
+# Third command: (Electronic) Energy threshold in Hartree for duplicate filtering. Default value is GOAT's default threshold of 0.00016.
+
+ET=$(echo $3)
+if [ -z "$ET" ]; then ET="0.00016"; fi
+
+echo "What is the name of your RMSD file? (Default output name: RMSD.txt)"
+read RMSDfile
+if [ -z "$RMSDfile" ]; then RMSDfile="RMSD.txt"; fi
+
+echo "What is the name of your energies file? (Default output name: energies.txt)"
+read enerfile
+if [ -z "$enerfile" ]; then enerfile="energies.txt"; fi
+
+echo "Temperature for population calculation? (Default 298 K. NOTE: G values assumed constant in T)"
+read T
+if [ -z "$T" ]; then T="298"; fi
+
+module load python-data
+
+python $snakepit/Dups.py $Ecut $RMSDT $ET $RMSDfile $enerfile $T
+
+cat Unique.txt

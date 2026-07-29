@@ -1,0 +1,90 @@
+#!/bin/bash
+#Command: runF12 filename
+############################################################################################################
+# Generates an input file for a  RI-CCSD(T)-F12 single point energy evaluation and runs it in local scratch.
+#############################################################################################################
+
+echo "Roihu doesn't have local scratch yet! Running this will cause slowdown due to I/O!"
+
+# For other users: These are the variables you may want to change:
+acc="kurten"
+orcadir="/projappl/kurten/appl_public/orca_6_1_1_linux_x86-64_shared_openmpi418_avx2"
+
+g=$(echo $1)
+
+echo "Time?"
+read TIME
+echo "Charge and multiplicity?"
+read c_and_m
+echo "Number of parallel processes?"
+read core
+echo "Memory per core?"
+read memcore
+echo "Local disk space?"
+read disk
+
+echo "DLPNO approximation? y/n"
+read DLPNO
+if [ "$DLPNO" = "y" ]; then
+cmndline="! UHF DLPNO-CCSD(T)-F12 cc-pVDZ-F12 cc-pVDZ-F12-CABS cc-pVTZ/C TightPNO TightSCF"
+else
+cmndline="! UHF CCSD(T)-F12/RI cc-pVDZ-F12 cc-pVDZ-F12-CABS cc-pVTZ/C TightSCF"
+fi
+
+echo "Use Nino's project? y/n"
+read Nino
+if [ "$Nino" = "y" ]; then
+acc="project_2006383"
+fi
+
+ls *$g*.xyz > mylist.txt
+
+while [ -s mylist.txt ]	      	      			#while the file is not empty
+do
+read -r f < mylist.txt					#Reads first line from mylist
+NAME=`echo "$f" | cut -d'.' -f1`
+sed -i '1d' mylist.txt
+
+if [[ ${NAME: -3} == "trj" ]]; then  # Skip trajectory files auto-generated from geometry optimization jobs. 
+        continue
+fi
+
+( echo "$cmndline
+
+%pal
+nprocs=$core
+end
+
+%maxcore $memcore
+"
+echo "* xyz $c_and_m";
+tail -n +3 $NAME.xyz;
+echo "*" ) > $NAME-F12.inp
+done
+
+batch=($(ls -1 *F12.inp))
+
+# Create .job file
+echo "#!/bin/bash -l
+#SBATCH -J $g-F12
+#SBATCH -t $TIME
+#SBATCH --ntasks-per-node $core
+#SBATCH --nodes 1
+#SBATCH --account=$acc
+#SBATCH --mem-per-cpu=$memcore
+#SBATCH -p hugemem
+#SBATCH --gres=nvme:$disk
+
+export ORCADIR=$orcadir
+module purge
+module load orca/6.1.1
+" > $g-F12.job
+
+for l in ${batch[@]}; do
+FILE=`echo "$l" | cut -d'.' -f1`
+        echo "\$ORCADIR/orca $FILE.inp > $FILE.out" >> $g-F12.job
+done
+echo "seff \$SLURM_JOBID" >> $g-F12.job
+
+sbatch $g-F12.job
+rm mylist.txt

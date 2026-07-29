@@ -1,0 +1,258 @@
+#!/bin/bash
+#############################################################################################
+# Script for Multi-Conformer Transition State Theory Calculations with Temperature Dependence
+# This version is for BIMOLECULAR REACTIONS, with DFT energies for IRC endpoints.
+# 'TSTG' scripts are for people who are (still) using Gaussian for DFT steps.
+# by Lauri Franzon
+#############################################################################################
+
+##################################################################################################
+# Note: These TST scripts are built on the assumption that output files have the naming convention
+# PrefixN-DFTsuffix.out or PrefixN-DFTsuffix-CCSD(T)suffix.out
+# Where N is an integer. This is crucial for the code's recognition of which file is which.
+##################################################################################################
+
+# For other users, you may want to change the variable name specifying the location of the python script:
+snakepit="/users/lfranzon/ORCA_Workflow_Scripts/Snakepit"
+
+echo "NOTE: Linear reactants like O2 or OH are currently not supported!"
+
+echo "Your files:"
+ls
+
+echo "CCSD(T) file name extension? e.g. DLPNO or F12?"
+read ccname
+
+#########################################################################################
+# STEP 1: Extract Coupled-Cluster energy corrections from reactant, TS, and Product files.
+##########################################################################################
+
+echo "Name of GLOBAL MINIMUM Coupled-Cluster output file for REACTANT 1"
+read RCC1
+
+# Extract Coupled Cluster energy
+REe1=$(grep "FINAL SINGLE POINT ENERGY" $RCC1.out | awk '{print $5}')
+
+# Extract DFT electronic energy for the same conformer.
+REedft1=$( awk '/a/ {print $5}' <(grep 'E(' ${RCC1%-$ccname}.log | tail -1) )
+
+# Extract mass of reactant 1.
+R1mass=$(grep 'Molecular mass:' ${RCC1%-$ccname}.log | awk '{print $3}' )
+
+echo "Name of GLOBAL MINIMUM Coupled-Cluster output file for REACTANT 2"
+read RCC2
+
+# Extract Coupled Cluster energy
+REe2=$(grep "FINAL SINGLE POINT ENERGY" $RCC2.out | awk '{print $5}')
+
+# Extract DFT electronic energy for the same conformer.
+REedft2=$( awk '/a/ {print $5}' <(grep 'E(' ${RCC2%-$ccname}.log | tail -1) )
+
+# Extract mass of reactant 2.
+R2mass=$(grep 'Molecular mass:' ${RCC2%-$ccname}.log | awk '{print $3}' )
+
+echo "Name of TRANSITION STATE Coupled-Cluster output file"
+read TSCC
+
+# Extract Coupled Cluster energy
+TSEe=$(grep "FINAL SINGLE POINT ENERGY" $TSCC.out | awk '{print $5}')
+
+# Extract DFT electronic energy for the same conformer.
+TSEedft=$( awk '/a/ {print $5}' <(grep 'E(' ${TSCC%-$ccname}.log | tail -1) )
+
+echo "Include tunneling correction? y/n"
+read tunnel
+if [ "$tunnel" == "y" ]; then
+
+echo "Name of PRODUCT Opt/Freq file"
+read PwB
+
+echo "IRC Reactant complex Opt/Freq output?"
+read IRCR
+fi
+
+#####################################################################
+#STEP 2: Count the R & TS conformers and extract necessary variables.
+#####################################################################
+
+echo "DFT Opt+Freq output file name ending? (for example DF or wB)"
+read suffix
+
+# Count the number of vibrational modes for each system.
+nov1=$( grep "Frequencies" ${RCC1%-$ccname}.log|  awk '{count += NF-2} END {print count}' )
+nov2=$( grep "Frequencies" ${RCC2%-$ccname}.log|  awk '{count += NF-2} END {print count}' )
+novTS=$( grep "Frequencies" ${TSCC%-$ccname}.log|  awk '{count += NF-2} END {print count}' )
+
+# Write the columns headers for the Reactant conformer DataFrame.
+(echo -n "n Energy ZPE Gibbs Dip A B C" 
+for (( i=1; i<=$nov1; i++ ))
+do
+    echo -n " v$i"
+done
+echo ) > Reactant1_conformers.txt
+
+echo "Base name of REACTANT 1 final conformer optimization (e.g. Criegee...suffix.out)"
+read ROPT1
+
+# Count the number of reactant conformers.
+Rnum=$(ls $ROPT1*$suffix.log | wc -l)
+echo "$Rnum reactant conformers"
+
+# Loop over the output files.
+k=0
+for r in $ROPT1*$suffix.log; do
+        k=$((k+1))
+        # Exctract DFT energy.
+        ener=$( awk '/a/ {print $5}' <(grep 'E(' $r | tail -1) )
+        # Extract the Zero-point energy
+        zpe=$( grep "Zero-point correction" $r | awk '{print $3}' )
+        # Extract Gibbs free energy at 298.15 K (for determining global minimum reactant)
+        gibbs=$( awk '/a/ {print $8}' <(grep 'Free Energies' $r | tail -1) )
+        # Extract dipole moment
+        dipole=$(grep -A1 'Dipole moment' $r | tail -1 | awk '{print $8}')
+        # Extract rotational constants.
+        rots=$(grep 'Rotational constants' $r | tail -1 | awk '{print $4,$5,$6}' )
+        # Extract vibrational frequencies.
+        vibs=$(grep "Frequencies" $r | awk '{print $3,$4,$5}' | tr '\n' ' ' | xargs)
+        # Save info in text file.
+        ( echo "$k $ener $zpe $gibbs $dipole $rots $vibs" ) >> Reactant1_conformers.txt
+done
+
+echo "Base name of REACTANT 2 final conformer optimization (e.g. Acid...suffix.out)"
+read ROPT2
+
+# Write the columns headers for the Reactant conformer DataFrame.
+(echo -n "n Energy ZPE Gibbs Dip A B C"
+for (( i=1; i<=$nov2; i++ ))
+do
+    echo -n " v$i"
+done
+echo ) > Reactant2_conformers.txt
+
+Rnum=$(ls $ROPT2*$suffix.log | wc -l)
+echo "$Rnum reactant conformers"
+
+# Loop over the output files.
+k=0
+for r in $ROPT2*$suffix.log; do
+        k=$((k+1))
+        # Exctract DFT energy.
+        ener=$( awk '/a/ {print $5}' <(grep 'E(' $r | tail -1) )
+        # Extract the Zero-point energy
+        zpe=$( grep "Zero-point correction" $r | awk '{print $3}' )
+        # Extract Gibbs free energy at 298.15 K (for determining global minimum reactant)
+        gibbs=$( awk '/a/ {print $8}' <(grep 'Free Energies' $r | tail -1) )
+        # Extract dipole moment
+        dipole=$(grep -A1 'Dipole moment' $r | tail -1 | awk '{print $8}')
+        # Extract rotational constants.
+        rots=$(grep 'Rotational constants' $r | tail -1 | awk '{print $4,$5,$6}' )
+        # Extract vibrational frequencies.
+        vibs=$(grep "Frequencies" $r | awk '{print $3,$4,$5}' | tr '\n' ' ' | xargs)
+        # Save info in text file.
+        ( echo "$k $ener $zpe $gibbs $dipole $rots $vibs" ) >> Reactant2_conformers.txt
+done
+
+
+# STEP 2.2: Now the transition state conformers.
+
+echo "Name of TRANSITION STATE final conformer optimization"
+read TSOPT
+
+# Count the number of reactant conformers
+TSnum=$(ls $TSOPT*$suffix.log | wc -l)
+echo "$TSnum unique TS Saddle points"
+
+# Write the columns headers for the Transition State  conformer DataFrame.
+(echo -n "n Energy ZPE Gibbs Dip A B C" 
+for (( i=1; i<=$novTS; i++ ))
+do
+    echo -n " v$i"
+done
+echo ) > TS_conformers.txt
+
+# Loop over the output files.
+k=0
+for t in $TSOPT*$suffix.log; do
+        k=$((k+1))
+        # Exctract DFT energy.
+        ener=$( awk '/a/ {print $5}' <(grep 'E(' $t | tail -1) )
+        # Extract the Zero-point energy
+        zpe=$( grep "Zero-point correction" $t | awk '{print $3}' )
+        # Extract Gibbs free energy at 298.15 K (for determining global minimum reactant)
+        gibbs=$( awk '/a/ {print $8}' <(grep 'Free Energies' $t | tail -1) )
+        # Extract dipole moment
+        dipole=$(grep -A1 'Dipole moment' $t | tail -1 | awk '{print $8}')
+        # Extract rotational constants.
+        rots=$(grep 'Rotational constants' $t | tail -1 | awk '{print $4,$5,$6}' )
+        # Extract vibrational frequencies.
+        vibs=$(grep "Frequencies" $t | awk '{print $3,$4,$5}' | tr '\n' ' ' | xargs)
+        # Save info in text file.
+        ( echo "$k $ener $zpe $gibbs $dipole $rots $vibs" ) >> TS_conformers.txt
+done
+
+# Step 2.3: The same information for the IRC reactant and product
+# ONLY PERFORMED IF TUNNELING CORRECTIONS ARE CHOSEN
+
+if [ "$tunnel" == "y" ]; then 
+
+# Write the columns headers for the Product DataFrame.
+(echo -n "n Energy ZPE Gibbs A B C" 
+for (( i=1; i<=$novTS; i++ ))
+do
+    echo -n " v$i"
+done
+echo ) > IRC_Product_conformer.txt
+
+Pener=$( awk '/a/ {print $5}' <(grep 'E(' $PwB.log | tail -1) )
+zpe=$( grep "Zero-point correction" $PwB.log | awk '{print $3}' )
+dipole=$(grep -A1 'Dipole moment' $PwB.log | tail -1 | awk '{print $8}')
+gibbs=$( awk '/a/ {print $8}' <(grep 'Free Energies' $PwB.log | tail -1) ) # This information is strictly speaking not necessary, but it's nice that the indexing stays consistent.
+rots=$(grep 'Rotational constants' $PwB.log | tail -1 | awk '{print $4,$5,$6}' )
+vibs=$(grep "Frequencies" $PwB.log | awk '{print $3,$4,$5}' | tr '\n' ' ' | xargs)
+( echo "0 $Pener $zpe $gibbs $dipole $rots $vibs" ) >> IRC_Product_conformer.txt
+
+# Write the columns headers for the IRC Reactant DataFrame.
+(echo -n "n Energy ZPE Gibbs A B C"
+for (( i=1; i<=$novTS; i++ ))
+do
+    echo -n " v$i"
+done
+echo ) > IRC_Reactant_conformer.txt
+
+IRCener=$( awk '/a/ {print $5}' <(grep 'E(' $IRCR.log | tail -1) )
+zpe=$( grep "Zero-point correction" $IRCR.log | awk '{print $3}' )
+dipole=$(grep -A1 'Dipole moment' $IRCR.log | tail -1 | awk '{print $8}')
+gibbs=$( awk '/a/ {print $8}' <(grep 'Free Energies' $IRCR.log | tail -1) ) # This information is strictly speaking not necessary, but it's nice that the indexing stays consistent.
+rots=$(grep 'Rotational constants' $IRCR.log | tail -1 | awk '{print $4,$5,$6}' )
+vibs=$(grep "Frequencies" $IRCR.log | awk '{print $3,$4,$5}' | tr '\n' ' ' | xargs)
+( echo "0 $IRCener $zpe $gibbs $dipole $rots $vibs" ) >> IRC_Reactant_conformer.txt
+
+fi
+
+################################################
+# STEP 3: Do all the necessary number crunching.
+################################################
+
+echo "Calculate over a range of temperatures? (y/n)"
+read Trange
+if [ "$Trange" == "y" ]; then
+echo "Low T? default 250.0 K"
+read lowT
+if [ -z "$lowT" ]; then lowT="250.0"; fi
+
+echo "High T? Default 315.0 K"
+read highT
+if [ -z "$highT" ]; then highT="315.0"; fi
+
+else
+lowT="298.0"
+highT="298.0"
+fi
+
+echo "Constant multiplier for reaction rate (Multiplicity multiplier * TS optical degeneracy)"
+read Deg
+
+module load python-data
+
+python $snakepit/MCTSTBimole.py $Trange $lowT $highT $REe1 $REedft1 $REe2 $REedft2 $TSEe $TSEedft $R1mass $R2mass 0 0 0 0 $Deg $tunnel "G"
+

@@ -1,0 +1,24 @@
+#!/bin/bash
+# Command: findcloggers queue
+
+q=$(echo $1)
+
+squeue --format="%.10i %.9P %.10j %.5C %.5m %.8u %.8T %.10M %.10l %.6D %R"  > fullqueue.txt
+
+head -1 fullqueue.txt > queue.txt
+grep "$q" fullqueue.txt | grep RUNNING | while read line
+do
+   k=$(($k+1))
+   timestr=$( echo $line | awk '{print $8}')
+   if [ ${#timestr} -gt 6 ]; then
+    echo $line >> queue.txt
+   fi
+done
+
+
+module load python-data
+python /users/lfranzon/Snakepit/Printtimes.py
+
+cat Cloggerlist.txt | sed 's/-/ /g' | sort -nk2
+
+rm Cloggerlist.txt queue.txt fullqueue.txt

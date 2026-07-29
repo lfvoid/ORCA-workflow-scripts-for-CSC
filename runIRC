@@ -1,0 +1,73 @@
+#!/bin/bash
+#Calling command: NextLevelInput name
+
+##################################################################################################################################
+# Generates a an IRC input file utilizing previously generated xyz and hess files. It is assumed that the filenames are identical, e.g.
+# filename.xyz and filename.hess
+##################################################################################################################################
+
+# For other users: These are the variables you may want to change:
+acc="kurten"
+orcadir="/projappl/kurten/appl_public/orca_6_1_1_linux_x86-64_shared_openmpi418_avx2"
+
+g=$(echo $1)
+
+# If no input is given, use the first xyz file in the directory.
+if [ -z "$g" ]; then g=$(ls *xyz | head -1 ); fi
+
+echo "Time?"
+read TIME
+echo "Charge and multiplicity?"
+read cm
+echo "Number of parallel processes?"
+read core
+echo "Memory per core?"
+read mem
+echo "Select the partition: small, large, test, etc..."
+read QUEUE
+echo "Level of theory? Method Basis"
+read THEO
+
+# Find the name of the file.
+NAME=`echo "$g.xyz" | cut -d'.' -f1`
+
+( echo "! $THEO IRC
+
+%pal
+nprocs=$core
+end
+
+%maxcore $mem
+
+%irc
+InitHess read
+Hess_Filename \"$NAME.hess\"
+end
+"
+echo "* xyz $cm";
+tail -n +3 $NAME.xyz;
+echo "*" ) > $NAME-IRC.inp
+
+# Create .job file
+echo "#!/bin/bash -l
+#SBATCH -J $NAME-IRC
+#SBATCH -t $TIME
+#SBATCH --ntasks-per-node $core
+#SBATCH --nodes 1
+#SBATCH --account=$acc
+#SBATCH --mem-per-cpu=$mem
+#SBATCH -p $QUEUE
+
+export ORCADIR=$orcadir
+module purge
+module load orca/6.1.1
+
+\$ORCADIR/orca $NAME-IRC.inp > $NAME-IRC.out
+seff \$SLURM_JOBID
+seff \$SLURM_JOBID
+
+rm *tmp     # Remove the temporary files, because ORCA 6.0 does not do it on its own. 
+rm *tmp.0   # Remove the temporary files, because ORCA 6.0 does not do it on its own. 
+" > $NAME-IRC.job
+
+sbatch $NAME-IRC.job

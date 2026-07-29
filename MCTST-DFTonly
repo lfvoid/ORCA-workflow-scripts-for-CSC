@@ -1,0 +1,187 @@
+#!/bin/bash
+#############################################################################################
+# Script for Multi-Conformer Transition State Theory Calculations with Temperature Dependence
+# This version is for UNIMOLECULAR REACTIONS, when ONLY DFT energies are available.
+# by Lauri Franzon
+#############################################################################################
+
+##################################################################################################
+# Note: These TST scripts are built on the assumption that output files have the naming convention
+# PrefixN-DFTsuffix.out or PrefixN-DFTsuffix-CCSD(T)suffix.out
+# Where N is an integer. This is crucial for the code's recognition of which file is which.
+##################################################################################################
+
+# For other users: Change this variable name to the location of your python scripts.
+snakepit="/users/lfranzon/ORCA_Workflow_Scripts/Snakepit"
+
+echo "Your files:"
+ls
+
+#########################################################################################
+# STEP 1: Extract Coupled-Cluster energy corrections from reactant, TS, and Product files.
+##########################################################################################
+
+echo "Include tunneling correction? y/n"
+read tunnel
+if [ "$tunnel" == "y" ]; then
+
+echo "Name of PRODUCT Opt/Freq file"
+read PwB
+
+echo "IRC Reactant Opt/Freq output?"
+read IRCR
+
+else
+echo "Give one reactant output file for reference."
+read Rref
+fi
+
+#####################################################################
+#STEP 2: Count the R & TS conformers and extract necessary variables.
+#####################################################################
+
+echo "DFT Opt+Freq output file name ending? (for example DFT or wB)"
+read suffix
+
+# Count the number of vibrational modes from a reactant optimization file.
+if [ "$tunnel" == "y" ]; then
+nov=$( grep "total number of vibrations considered is" $IRCR.out | tail -1 | awk '{print $8}' )
+else
+nov=$( grep "total number of vibrations considered is" $Rref.out | tail -1 | awk '{print $8}' )
+fi
+
+# Number of lines to grep from ORCA vibrational output
+let "lines=nov+1"
+let "TSlines=nov+7"    # A slightly different Frequency extraction command is needed to include the negative frequency.
+
+# Write the columns headers for the Reactant conformer DataFrame.
+(echo -n "n Energy ZPE Gibbs A B C" 
+for (( i=1; i<=$nov; i++ ))
+do
+echo -n " v$i"
+done
+echo ) > Reactant_conformers.txt
+
+echo "Base name of REACTANT final conformer optimization"
+read ROPT
+
+# Count the number of reactant conformers.
+Rnum=$(ls $ROPT*$suffix.out | wc -l)
+echo "$Rnum reactant conformers"
+
+# Loop over the output files.
+k=0
+for r in $ROPT*$suffix.out; do
+        k=$((k+1))
+        # Exctract DFT energy.
+        ener=$(grep 'FINAL SINGLE POINT ENERGY' $r | tail -1 | awk '{printf "%.7f",$5}')
+        # Extract Zero-point energy
+        zpe=$(grep 'Zero point energy' $r | tail -1 | awk '{print $5}')
+        # Extract Gibbs free energy at 298.15 K (for determining global minimum reactant)
+        gibbs=$(grep "Final Gibbs free energy" $r | tail -1 | awk '{print $6}')
+        # Extract rotational constants.
+        rots=$(grep "Rotational constants in cm-1:" $r | tail -1 | awk '{print $5,$6,$7}' | xargs | tr ' ' ' ')
+        # Extract vibrational frequencies.
+        vibs=$(grep "All vibrations are strictly harmonic" -A$lines $r | tail -$nov | awk '{print $2}' | xargs | tr ' ' ' ')
+        # Save info in text file.
+        ( echo "$k $ener $zpe $gibbs $rots $vibs" ) >> Reactant_conformers.txt
+done
+
+# STEP 2.2: Now the transition state conformers.
+
+echo "Name of TRANSITION STATE final conformer optimization"
+read TSOPT
+
+# Count the number of reactant conformers
+TSnum=$(ls $TSOPT*$suffix.out | wc -l)
+echo "$TSnum unique TS Saddle points"
+
+# Write the columns headers for the Transition State  conformer DataFrame.
+(echo -n "n Energy ZPE Gibbs A B C" 
+for (( i=1; i<=$nov; i++ ))
+do
+echo -n " v$i"
+done
+echo ) > TS_conformers.txt
+
+# Loop over the output files.
+k=0
+for t in $TSOPT*$suffix.out; do
+        k=$((k+1))
+        # Exctract DFT energy.
+        ener=$(grep 'FINAL SINGLE POINT ENERGY' $t | tail -1 | awk '{printf "%.7f",$5}')
+        # Extract Zero-point energy
+        zpe=$(grep 'Zero point energy' $t | tail -1 | awk '{print $5}')
+        # Extract Gibbs free energy at 298.15 K (for determining most likely TS saddle point)
+        gibbs=$(grep "Final Gibbs free energy" $t | tail -1 | awk '{print $6}')
+        # Extract rotational constants.
+        rots=$(grep "Rotational constants in cm-1:" $t | tail -1 | awk '{print $5,$6,$7}' | xargs | tr ' ' ' ')
+        # Extract vibrational frequencies. Note difference from previous loop! The negative frequency is included here.
+        vibs=$(grep "Scaling factor for frequencies" -A$TSlines $t | tail -$nov | awk '{print $2}' | xargs | tr ' ' ' ')
+        # Save info in text file.
+        ( echo "$k $ener $zpe $gibbs $rots $vibs" ) >> TS_conformers.txt
+done
+
+# Step 2.3: The same information for the IRC reactant and product
+# ONLY PERFORMED IF TUNNELING CORRECTIONS ARE CHOSEN
+
+if [ "$tunnel" == "y" ]; then 
+
+# Write the columns headers for the Product DataFrame.
+(echo -n "n Energy ZPE Gibbs A B C" 
+for (( i=1; i<=$nov; i++ ))
+do
+echo -n " v$i"
+done
+echo ) > IRC_Product_conformer.txt
+
+Pener=$(grep "FINAL SINGLE POINT ENERGY" $PwB.out | awk '{print $5}' | tail -1 )
+zpe=$(grep 'Zero point energy' $PwB.out | tail -1 | awk '{print $5}')
+gibbs=$(grep "Final Gibbs free energy" $PwB.out | awk '{print $6}') # This information is strictly speaking not necessary, but it's nice that the indexing stays consistent.
+rots=$(grep "Rotational constants in cm-1:" $PwB.out | tail -1 | awk '{print $5,$6,$7}' | xargs | tr ' ' ' ')
+vibs=$(grep "All vibrations are strictly harmonic" -A$lines $PwB.out | tail -$nov | awk '{print $2}' | xargs | tr ' ' ' ')
+( echo "0 $Pener $zpe $gibbs $rots $vibs" ) >> IRC_Product_conformer.txt
+
+# Write the columns headers for the IRC Reactant DataFrame.
+(echo -n "n Energy ZPE Gibbs A B C" 
+for (( i=1; i<=$nov; i++ ))
+do
+echo -n " v$i"
+done
+echo ) > IRC_Reactant_conformer.txt
+
+IRCener=$(grep "FINAL SINGLE POINT ENERGY" $IRCR.out | awk '{print $5}' | tail -1 )
+zpe=$(grep 'Zero point energy' $IRCR.out | tail -1 | awk '{print $5}')
+gibbs=$(grep "Final Gibbs free energy" $IRCR.out | awk '{print $6}') # This information is strictly speaking not necessary, but it's nice that the indexing stays consistent.
+rots=$(grep "Rotational constants in cm-1:" $IRCR.out | tail -1 | awk '{print $5,$6,$7}' | xargs | tr ' ' ' ')
+vibs=$(grep "All vibrations are strictly harmonic" -A$lines $IRCR.out | tail -$nov | awk '{print $2}' | xargs | tr ' ' ' ')
+( echo "0 $IRCener $zpe $gibbs $rots $vibs" ) >> IRC_Reactant_conformer.txt
+
+fi
+
+################################################
+# STEP 3: Do all the necessary number crunching.
+################################################
+
+echo "Calculate over a range of temperatures? (y/n)"
+read Trange
+if [ "$Trange" == "y" ]; then
+echo "Low T? default 250.0 K"
+read lowT
+if [ -z "$lowT" ]; then lowT="250.0"; fi
+
+echo "High T? Default 315.0 K"
+read highT
+if [ -z "$highT" ]; then highT="315.0"; fi
+
+else
+lowT="298.0"
+highT="298.0"
+fi
+
+echo "Reaction path degeneracy? (Including TS optical symmetry)"
+read Deg
+
+module load python-data
+
+python $snakepit/MCTSTUnimole.py $Trange $lowT $highT 0 0 0 0 0 0 0 0 $Deg $tunnel

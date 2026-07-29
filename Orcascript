@@ -1,0 +1,52 @@
+#!/bin/bash
+#Command: Orcascript filename.inp
+
+#############################################################################################
+# Script for running a series of ORCA input files either in serial or in parallell.
+# Only works on the supercomputer ROIHU.
+#############################################################################################
+
+orcadir="/projappl/kurten/appl_public/orca_6_1_1_linux_x86-64_shared_openmpi418_avx2"
+
+f=$(echo $1)
+FILE=`echo "$f" | cut -d'.' -f1` 
+echo "Give value for time (hh:mm:ss)"
+read TIME
+echo "How many computing cores? (128 per node)"
+read CORES
+echo "Memory per core?"
+read MEM
+echo "Select the partition: small, large, test, etc..."
+read QUEUE
+echo "Use Nino's project? y/n"
+read Nino
+if [ "$Nino" = "y" ]; then
+acc="project_2006383"
+else
+acc="kurten"
+fi
+
+
+SDIR=`pwd`
+
+# Create .job file
+echo "#!/bin/bash -l
+#SBATCH -J $FILE
+#SBATCH -t $TIME
+#SBATCH --ntasks-per-node $CORES
+#SBATCH --nodes 1
+#SBATCH --account=$acc
+#SBATCH --mem-per-cpu=$MEM
+#SBATCH -p $QUEUE
+
+export ORCADIR=$orcadir
+module purge
+module load orca/6.1.1
+
+\$ORCADIR/orca $FILE.inp > $FILE.out
+
+sacct -j \$SLURM_JOBID --format=JobID,MaxRSS,Elapsed,State
+seff \$SLURM_JOBID
+" > $FILE.job
+
+sbatch $FILE.job

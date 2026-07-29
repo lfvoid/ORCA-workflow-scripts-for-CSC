@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+
+*.log
+*.out
+*.err
+
+.ipynb_checkpoints/
+
+*.swp
+
+results/
+output/
+tmp/

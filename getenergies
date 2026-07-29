@@ -1,0 +1,80 @@
+#!/bin/bash
+#Calling command: getenergies name
+
+############################################################################################################################
+# Energy/dipole/time/Gibbs collection from ORCA output files.
+# Cannibalized by L Franzon from T Golin-Almeida's output analysis scripts.
+#
+# Essentially, this script reads all *out files with 'name' in the title and generates a table of the most relevant variables 
+# in a file named energies.txt. This file is assumed to exist when you run the 'duplicates' script.
+############################################################################################################################
+
+##################################################################################
+# Defining functions
+##################################################################################
+
+chkstatus () {
+
+    if grep "ORCA TERMINATED NORMALLY" $f &>/dev/null; then status=Completed
+    elif grep "ORCA finished by error termination" $f &>/dev/null; then status=Error
+    else status=Unfinished
+    fi
+	if grep 'HURRAY' $f &>/dev/null; then stpoint=yes; else stpoint=no; fi
+
+	if [ "$status" = "Completed" ]; then
+           # Find the row with "
+                dd=$(tail -1 $f | awk '/a/ {print $4}') # From final line: x days
+                hh=$(tail -1 $f | awk '/a/ {print $6}') # From final line: x hours
+                mm=$(tail -1 $f | awk '/a/ {print $8}') # From final line: x minutes
+                ss=$(tail -1 $f | awk '/a/ {print $10}') # From final line: x seconds
+                ss=$(LC_ALL=C printf '%.0f' "$ss")
+                d2h=$((d*24)); hh=$((hh+d2h))
+                hh=$(printf "%.2d" $hh); mm=$(printf "%.2d" $mm); ss=$(printf "%.2d" $ss)
+                calctime=$(echo "$hh":"$mm":"$ss")
+	else
+		calctime=---
+	fi
+}
+
+getenergy () {
+	energy=$(grep 'FINAL SINGLE POINT ENERGY' $f | tail -1 | awk '{printf "%.12f",$5}'); if [ -z $energy ]; then energy="---"; fi
+}
+
+getzpe () {
+	zpe=$(grep 'Zero point energy' $f | tail -1 | awk '{printf "%.7f",$5}'); if [ -z $zpe ]; then zpe="0"; fi
+}
+
+getdipole () {
+	dipole=$(grep "Magnitude (Debye)" $f | awk '{print $4}'); if [ -z $dipole ]; then dipole="---"; fi
+}
+
+countcycles () {
+	cycles=$(grep 'OPTIMIZATION CYCLE' $f | tail -1 | awk '{print $5}'); if [ -z $cycles ]; then cycles="---"; fi
+}
+
+getgibbs () {
+        G=$(grep 'Final Gibbs free energy' $f | tail -1 | awk '{printf "%.7f",$6}'); if [ -z $G ]; then G="0"; fi
+}
+
+##########################################################
+# Extract and tabulate dipole and electronic energy values
+##########################################################
+
+strg=$(echo $1)
+filenum=$(ls *$strg*.out | wc -l)
+k=0
+
+> conflist.txt
+
+for f in *$strg*.out; do
+	k=$((k+1))
+	echo -ne -e " \e[1;32mGoing through files, please wait... loop \e[1;35m$k\e[1;32m of $filenum output files\e[0m \r"
+	name=$(echo $f | cut -d '.' -f1)
+	chkstatus
+	getenergy; getzpe; getdipole; countcycles; getgibbs
+	echo "$k $name $energy $dipole $stpoint $cycles $calctime $zpe $G" >> conflist.txt
+done
+
+mv conflist.txt energies.txt
+# Add column names
+sed -i "1s/^/c Name E Dip conv cycles time ZPE Gibbs\n/" energies.txt

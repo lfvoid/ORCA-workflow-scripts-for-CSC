@@ -1,0 +1,91 @@
+#!/bin/bash
+#Calling command: runGOAT name(.xyz)
+############################################################################################################################
+# Run GOAT for the specified xyz file.
+############################################################################################################################
+
+orcadir="/projappl/kurten/appl_public/orca_6_1_1_linux_x86-64_shared_openmpi418_avx2"
+
+echo "Roihu doesn't have local scratch yet! Running this will cause slowdown due to I/O!"
+
+g=$(echo $1)
+
+# If no input is given, use the first xyz file in the directory.
+if [ -z "$g" ]; then g=$(ls *xyz | head -1 ); fi
+
+echo "Time?"
+read TIME
+echo "Charge and multiplicity?"
+read cm
+echo "Number of parallel processes?"
+read CORES
+echo "Memory per core?"
+read MEM
+echo "Level of theory? Method Basis"
+read THEO
+echo "Max energy cutoff?"
+read MaxEn
+echo "Geometry modifier (Hessian, Constraints, Scan), yes/no?"
+read geom
+if [[ "$geom" == "yes" ]];  then
+nano input.txt
+fi
+
+# Find the exact name of the file, in case input was simplified.
+NAME=`echo "$g.xyz" | cut -d'.' -f1`
+
+( echo "! $THEO GOAT
+
+%pal
+nprocs=$CORES
+end
+
+%maxcore $MEM
+
+%goat
+MaxEn $MaxEn
+Skipinitialopt True
+Align True
+end
+"
+
+if [[ "$geom" == "yes" ]];  then
+echo "%geom"
+cat input.txt 
+echo "end
+"
+fi
+
+echo "* xyz $cm";
+tail -n +3 $NAME.xyz;
+echo "*" ) > $NAME-Goat.inp
+
+echo "Use Nino's project? y/n"
+read Nino
+if [ "$Nino" = "y" ]; then
+acc="project_2006383"
+else
+acc="kurten"
+fi
+
+# Create .job file
+echo "#!/bin/bash -l
+#SBATCH -J Goat-$NAME
+#SBATCH -t $TIME
+#SBATCH --ntasks-per-node $CORES
+#SBATCH --nodes 1
+#SBATCH --account=$acc
+#SBATCH --mem-per-cpu=$MEM
+#SBATCH -p small
+
+export ORCADIR=$orcadir
+module purge
+module load orca/6.1.1
+
+\$ORCADIR/orca $NAME-Goat.inp > $NAME-Goat.out
+seff \$SLURM_JOBID
+" > $NAME-Goat.job
+
+sbatch $NAME-Goat.job
+
+rm input.txt

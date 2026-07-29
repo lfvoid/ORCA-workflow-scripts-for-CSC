@@ -1,0 +1,12 @@
+#!/bin/bash
+# Calling Command: Kooijfit filename
+#############################################################################################
+# Script for fitting T-dependent MCTST data to a Kooij function: k(T) = A * T^n * exp(-Ea/T)
+# by Lauri Franzon
+#############################################################################################
+
+# For other users, you may want to change the variable name specifying the location of the python script:
+snakepit="/users/lfranzon/ORCA_Workflow_Scripts/Snakepit"
+
+module load python-data
+python $snakepit/Kooij.py $1
