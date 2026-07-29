@@ -43,7 +43,7 @@ for c in LowE:
     # Skip conformers that have already been recognized as duplicates.
     if c in Dupscumul:
         continue
-    
+
     # Make a printout of the close cases (withing +/- 20%) for manual observation.
     Close=ConfRMSD[(ConfRMSD['c1']==c) & (ConfRMSD['RMSD_(Å)']<1.2*RMSDT) & (ConfRMSD['Energy_Ha']<1.2*ET) & ((ConfRMSD['RMSD_(Å)']>0.8*RMSDT) | (ConfRMSD['Energy_Ha']>0.8*ET))]
     if len(Close)>0:

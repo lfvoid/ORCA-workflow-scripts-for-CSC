@@ -7,33 +7,34 @@
 
 acc="kurten"
 orcadir="/projappl/kurten/appl_public/orca_6_1_1_linux_x86-64_shared_openmpi418_avx2"
-  
+
 #input values
-echo "$f charge and multiplicity?"
+echo "Name your molecule."
+read Mol
+echo "charge and multiplicity?"
 read c_and_m
-echo "Calculation time of $f in hh:mm:ss format?"
+echo "Calculation time of in hh:mm:ss format?"
 read time
-echo "How many computing cores? (128 per node)"
+echo "How many computing cores? (384 per node for small)"
 read CORES
 echo "Memory per core?"
 read MEM
-echo "Name your molecule."
-read Mol
 echo "Geometry constraints? (y/n)"
 read TS
 if [ "$TS" == "y" ]; then    # Open file and write constaints
 nano const.txt
 fi
 
-echo "Use Nino's project? y/n"
-read Nino
-if [ "$Nino" = "y" ]; then
-acc="project_2006383"
-fi
+# Nino's project does not have access to Roihu
+#echo "Use Nino's project? y/n"
+#read Nino
+#if [ "$Nino" = "y" ]; then
+#acc="project_2006383"
+#fi
 
 # Create copy of final ensemble file and make an input file for each conformer.
 cp *finalensemble.xyz copy.xyz
-k=0 
+k=0
 while [ -s copy.xyz ]
 do
 k=$(($k+1))

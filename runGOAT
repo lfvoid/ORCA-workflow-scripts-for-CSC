@@ -5,6 +5,7 @@
 ############################################################################################################################
 
 orcadir="/projappl/kurten/appl_public/orca_6_1_1_linux_x86-64_shared_openmpi418_avx2"
+acc="kurten"
 
 echo "Roihu doesn't have local scratch yet! Running this will cause slowdown due to I/O!"
 
@@ -13,23 +14,23 @@ g=$(echo $1)
 # If no input is given, use the first xyz file in the directory.
 if [ -z "$g" ]; then g=$(ls *xyz | head -1 ); fi
 
-echo "Time?"
-read TIME
+echo "Level of theory? Method Basis"
+read THEO
 echo "Charge and multiplicity?"
 read cm
+echo "Max energy cutoff?"
+read MaxEn
+echo "Geometry modifier (Constraints), y/n?"
+read geom
+if [[ "$geom" == "y" ]];  then
+nano input.txt
+fi
+echo "Time?"
+read TIME
 echo "Number of parallel processes?"
 read CORES
 echo "Memory per core?"
 read MEM
-echo "Level of theory? Method Basis"
-read THEO
-echo "Max energy cutoff?"
-read MaxEn
-echo "Geometry modifier (Hessian, Constraints, Scan), yes/no?"
-read geom
-if [[ "$geom" == "yes" ]];  then
-nano input.txt
-fi
 
 # Find the exact name of the file, in case input was simplified.
 NAME=`echo "$g.xyz" | cut -d'.' -f1`
@@ -51,7 +52,7 @@ end
 
 if [[ "$geom" == "yes" ]];  then
 echo "%geom"
-cat input.txt 
+cat input.txt
 echo "end
 "
 fi
@@ -60,13 +61,12 @@ echo "* xyz $cm";
 tail -n +3 $NAME.xyz;
 echo "*" ) > $NAME-Goat.inp
 
-echo "Use Nino's project? y/n"
-read Nino
-if [ "$Nino" = "y" ]; then
-acc="project_2006383"
-else
-acc="kurten"
-fi
+# Nino's project does not have access to Roihu
+#echo "Use Nino's project? y/n"
+#read Nino
+#if [ "$Nino" = "y" ]; then
+#acc="project_2006383"
+#fi
 
 # Create .job file
 echo "#!/bin/bash -l

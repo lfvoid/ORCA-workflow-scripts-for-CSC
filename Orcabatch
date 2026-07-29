@@ -7,11 +7,12 @@
 #############################################################################################
 
 orcadir="/projappl/kurten/appl_public/orca_6_1_1_linux_x86-64_shared_openmpi418_avx2"
+acc="kurten"
 
 f=$(echo $1)
 
 #sjstat -c
-#SJSTAT DOES NOT WORK ANYMORE! WHAT TO DO INSTEAD?
+#TODO: SJSTAT DOES NOT WORK ANYMORE! WHAT TO DO INSTEAD?
 
 calcnum=$(ls *$f*.inp | wc -l)
 batch=($(ls -1 *$f*.inp))
@@ -19,7 +20,7 @@ batch=($(ls -1 *$f*.inp))
 echo "$calcnum jobs."
 echo "Give value for time (hh:mm:ss)"
 read TIME
-echo "How many computing cores? (128 per node)"
+echo "How many computing cores? (384 per node for small & 64 for hugemem)"
 read CORES
 echo "Memory per core?"
 read MEM
@@ -28,13 +29,12 @@ read QUEUE
 echo "name?"
 read NAME
 
-echo "Use Nino's project? y/n"
-read Nino
-if [ "$Nino" = "y" ]; then
-acc="project_2006383"
-else
-acc="kurten"
-fi
+# Nino's project does not have access to Roihu
+#echo "Use Nino's project? y/n"
+#read Nino
+#if [ "$Nino" = "y" ]; then
+#acc="project_2006383"
+#fi
 
 SDIR=`pwd`
 

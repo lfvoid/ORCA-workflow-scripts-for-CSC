@@ -5,6 +5,8 @@
 # by Lauri Franzon
 #############################################################################################
 
+if [ -z "$1" ]; then 1="MCTSTRates.txt"; fi
+
 # For other users, you may want to change the variable name specifying the location of the python script:
 snakepit="/users/lfranzon/ORCA_Workflow_Scripts/Snakepit"
 
