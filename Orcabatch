@@ -81,7 +81,6 @@ for f in ${batch[@]}; do
     # Only create a new batch if we hit exactly $calcpjob, but NOT when l == $calcnum
     if [ "$j" = "$calcpjob" ]; then
         echo "seff \$SLURM_JOBID" >> $NAME-batch.job
-        echo "rm -f  \${SLURM_SUBMIT_DIR}/mpirun" >> $NAME-batch.job
         echo "mv * .." >> $NAME-batch.job
 
         k=$((k+1))

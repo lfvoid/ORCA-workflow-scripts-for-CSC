@@ -126,7 +126,6 @@ while [ $l -le $cnum ]; do
         # Only create a new batch if we hit exactly $calcpjob, but NOT when l == $calcnum
         if [ "$j" = "$calcpjob" ]; then
            echo "seff \$SLURM_JOBID" >> $Mol-postgoat.job
-           echo "rm -f  \${SLURM_SUBMIT_DIR}/mpirun" >> $Mol-postgoat.job
            echo "mv * .." >> $Mol-postgoat.job
 
             k=$((k+1))

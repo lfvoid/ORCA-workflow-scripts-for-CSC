@@ -70,6 +70,8 @@ echo "#!/bin/bash -l
 #SBATCH -J $g-F12
 #SBATCH -t $TIME
 #SBATCH --ntasks-per-node $core
+#SBATCH --cpus-per-task=1
+#SBATCH --mem-per-cpu=$MEM
 #SBATCH --nodes 1
 #SBATCH --account=$acc
 #SBATCH -p hugemem
