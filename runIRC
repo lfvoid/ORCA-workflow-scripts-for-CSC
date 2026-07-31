@@ -15,18 +15,18 @@ g=$(echo $1)
 # If no input is given, use the first xyz file in the directory.
 if [ -z "$g" ]; then g=$(ls *xyz | head -1 ); fi
 
-echo "Time?"
-read TIME
+echo "Level of theory? Method Basis"
+read THEO
 echo "Charge and multiplicity?"
 read cm
 echo "Number of parallel processes?"
-read core
+read cores
 echo "Memory per core?"
-read mem
-echo "Select the partition: small, large, test, etc..."
+read memcore
+echo "Select the partition: (small for IRC, maybe longrun)"
 read QUEUE
-echo "Level of theory? Method Basis"
-read THEO
+echo "Time?"
+read TIME
 
 # Find the name of the file.
 NAME=`echo "$g.xyz" | cut -d'.' -f1`
@@ -34,10 +34,10 @@ NAME=`echo "$g.xyz" | cut -d'.' -f1`
 ( echo "! $THEO IRC
 
 %pal
-nprocs=$core
+nprocs=$cores
 end
 
-%maxcore $mem
+%maxcore $memcore
 
 %irc
 InitHess read
@@ -52,10 +52,10 @@ echo "*" ) > $NAME-IRC.inp
 echo "#!/bin/bash -l
 #SBATCH -J $NAME-IRC
 #SBATCH -t $TIME
-#SBATCH --ntasks-per-node $core
+#SBATCH --ntasks-per-node $cores
 #SBATCH --nodes 1
 #SBATCH --account=$acc
-#SBATCH --mem-per-cpu=$mem
+#SBATCH --mem-per-cpu=$memcore
 #SBATCH -p $QUEUE
 
 export ORCADIR=$orcadir
@@ -64,10 +64,9 @@ module load orca/6.1.1
 
 \$ORCADIR/orca $NAME-IRC.inp > $NAME-IRC.out
 seff \$SLURM_JOBID
-seff \$SLURM_JOBID
 
-rm *tmp     # Remove the temporary files, because ORCA 6.0 does not do it on its own. 
-rm *tmp.0   # Remove the temporary files, because ORCA 6.0 does not do it on its own. 
+rm *tmp     # Remove the temporary files, because ORCA 6.0 does not do it on its own.
+rm *tmp.0   # Remove the temporary files, because ORCA 6.0 does not do it on its own.
 " > $NAME-IRC.job
 
 sbatch $NAME-IRC.job

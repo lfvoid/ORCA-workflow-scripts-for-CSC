@@ -81,7 +81,7 @@ export ORCADIR=$orcadir
 module purge
 module load orca/6.1.1
 
-#Set $ORCA_TMPDIR to point to the local disk
+#Utilize local storage
 export ORCA_TMPDIR=\$LOCAL_SCRATCH
 cp \$SLURM_SUBMIT_DIR/*.inp \$ORCA_TMPDIR/
 cd \$ORCA_TMPDIR
@@ -92,8 +92,13 @@ for l in ${batch[@]}; do
 FILE=`echo "$l" | cut -d'.' -f1`
         echo "\$ORCADIR/orca $FILE.inp > \${SLURM_SUBMIT_DIR}/$FILE.out" >> $g-F12.job
 done
-echo "seff \$SLURM_JOBID" >> $g-F12.job
-echo "cp -r \$ORCA_TMPDIR \$SLURM_SUBMIT_DIR" >> $g-F12.job
+
+echo "# Return to the submission directory and save the output files.
+cd \$SLURM_SUBMIT_DIR
+cp -r \$ORCA_TMPDIR .
+mv \$SLURM_JOBID/* .
+rmdir \$SLURM_JOBID
+seff \$SLURM_JOBID" >> $g-F12.job
 
 sbatch $g-F12.job
 rm mylist.txt

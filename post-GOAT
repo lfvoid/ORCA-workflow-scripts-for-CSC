@@ -13,17 +13,17 @@ echo "Name your molecule."
 read Mol
 echo "charge and multiplicity?"
 read c_and_m
-echo "Calculation time of in hh:mm:ss format?"
-read time
-echo "How many computing cores? (384 per node for small)"
-read CORES
-echo "Memory per core?"
-read MEM
 echo "Geometry constraints? (y/n)"
 read TS
 if [ "$TS" == "y" ]; then    # Open file and write constaints
 nano const.txt
 fi
+echo "Calculation time of in hh:mm:ss format (max 72:00:00 for small)?"
+read time
+echo "How many computing cores? (384 per node for small)"
+read cores
+echo "Memory per core?"
+read memcore
 
 # Nino's project does not have access to Roihu
 #echo "Use Nino's project? y/n"
@@ -40,21 +40,21 @@ do
 k=$(($k+1))
 noa=$(head  -1 copy.xyz )
 sed -n "1,$((noa+2)) p" copy.xyz  > $Mol$k.xyz
-sed -i "1,$((noa+2)) d" copy.xyz 
+sed -i "1,$((noa+2)) d" copy.xyz
 
-# Create an input file 
+# Create an input file
 if [ "$TS" == "y" ]; then
 
 (echo "! B3LYP D3 ma-def2-SVP OPT
 
 %pal
-nprocs=$CORES
+nprocs=$cores
 end
 
-%maxcore $MEM
+%maxcore $memcore
 
-%geom" 
-cat const.txt 
+%geom"
+cat const.txt
 echo "end
 
 * xyz $c_and_m"
@@ -67,10 +67,10 @@ else
 (echo "! B3LYP D3 ma-def2-SVP OPT
 
 %pal
-nprocs=$CORES
+nprocs=$cores
 end
 
-%maxcore $MEM
+%maxcore $memcore
 
 * xyz $c_and_m" > $Mol$k.inp
 sed -n "3,$((noa+2)) p" $Mol$k.xyz >> $Mol$k.inp
@@ -99,10 +99,10 @@ makejobtemplate () {
   echo "#!/bin/bash -l
 #SBATCH -J $Mol-b${k}
 #SBATCH -t $time
-#SBATCH --ntasks-per-node $CORES
+#SBATCH --ntasks-per-node $cores
 #SBATCH --nodes 1
 #SBATCH --account=$acc
-#SBATCH --mem-per-cpu=$MEM
+#SBATCH --mem-per-cpu=$memcore
 #SBATCH -p small
 
 export ORCADIR=$orcadir
@@ -167,10 +167,10 @@ else
 echo "#!/bin/bash -l
 #SBATCH -J $Mol-batch
 #SBATCH -t $time
-#SBATCH --ntasks-per-node $CORES
+#SBATCH --ntasks-per-node $cores
 #SBATCH --nodes 1
 #SBATCH --account=$acc
-#SBATCH --mem-per-cpu=$MEM
+#SBATCH --mem-per-cpu=$memcore
 #SBATCH -p small
 
 export ORCADIR=$orcadir

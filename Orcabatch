@@ -21,12 +21,12 @@ echo "$calcnum jobs."
 echo "Give value for time (hh:mm:ss)"
 read TIME
 echo "How many computing cores? (384 per node for small & 64 for hugemem)"
-read CORES
+read cores
 echo "Memory per core?"
-read MEM
-echo "Select the partition: small, large, etc..."
+read memcore
+echo "Select the partition: (presumably small for multi-conformer jobs)"
 read QUEUE
-echo "name?"
+echo "name for the job?"
 read NAME
 
 # Nino's project does not have access to Roihu
@@ -54,10 +54,10 @@ makejobtemplate () {
   echo "#!/bin/bash -l
 #SBATCH -J $NAME-b${k}
 #SBATCH -t $TIME
-#SBATCH --ntasks-per-node $CORES
+#SBATCH --ntasks-per-node $cores
 #SBATCH --nodes 1
 #SBATCH --account=$acc
-#SBATCH --mem-per-cpu=$MEM
+#SBATCH --mem-per-cpu=$memcore
 #SBATCH -p $QUEUE
 
 export ORCADIR=$orcadir
@@ -123,10 +123,10 @@ else
 echo "#!/bin/bash -l
 #SBATCH -J $NAME
 #SBATCH -t $TIME
-#SBATCH --ntasks-per-node $CORES
+#SBATCH --ntasks-per-node $cores
 #SBATCH --nodes 1
 #SBATCH --account=$acc
-#SBATCH --mem-per-cpu=$MEM
+#SBATCH --mem-per-cpu=$memcore
 #SBATCH -p $QUEUE
 
 export ORCADIR=$orcadir

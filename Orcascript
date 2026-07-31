@@ -10,14 +10,14 @@ orcadir="/projappl/kurten/appl_public/orca_6_1_1_linux_x86-64_shared_openmpi418_
 acc="kurten"
 
 f=$(echo $1)
-FILE=`echo "$f" | cut -d'.' -f1` 
+FILE=`echo "$f" | cut -d'.' -f1`
 echo "Give value for time (hh:mm:ss)"
 read TIME
 echo "How many computing cores? (384 per node for small & 64 for hugemem)"
-read CORES
+read cores
 echo "Memory per core?"
-read MEM
-echo "Select the partition: small, large, test, etc..."
+read memcore
+echo "Select the partition: (test, small, longrun...)"
 read QUEUE
 # Nino's project does not have access to Roihu
 #echo "Use Nino's project? y/n"
@@ -32,10 +32,10 @@ SDIR=`pwd`
 echo "#!/bin/bash -l
 #SBATCH -J $FILE
 #SBATCH -t $TIME
-#SBATCH --ntasks-per-node $CORES
+#SBATCH --ntasks-per-node $cores
 #SBATCH --nodes 1
 #SBATCH --account=$acc
-#SBATCH --mem-per-cpu=$MEM
+#SBATCH --mem-per-cpu=$memcore
 #SBATCH -p $QUEUE
 
 export ORCADIR=$orcadir

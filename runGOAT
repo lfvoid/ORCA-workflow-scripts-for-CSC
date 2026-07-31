@@ -7,7 +7,7 @@
 orcadir="/projappl/kurten/appl_public/orca_6_1_1_linux_x86-64_shared_openmpi418_avx2"
 acc="kurten"
 
-echo "Roihu doesn't have local scratch yet! Running this will cause slowdown due to I/O!"
+echo "Note: Script is written to utilize the shared node local scratch, which has a maximum storage capacity of 20 GB."
 
 g=$(echo $1)
 
@@ -28,9 +28,11 @@ fi
 echo "Time?"
 read TIME
 echo "Number of parallel processes?"
-read CORES
+read cores
 echo "Memory per core?"
-read MEM
+read memcore
+echo "Select the partition: (test or small)"
+read queue
 
 # Find the exact name of the file, in case input was simplified.
 NAME=`echo "$g.xyz" | cut -d'.' -f1`
@@ -38,10 +40,10 @@ NAME=`echo "$g.xyz" | cut -d'.' -f1`
 ( echo "! $THEO GOAT
 
 %pal
-nprocs=$CORES
+nprocs=$cores
 end
 
-%maxcore $MEM
+%maxcore $memcore
 
 %goat
 MaxEn $MaxEn
@@ -50,7 +52,7 @@ Align True
 end
 "
 
-if [[ "$geom" == "yes" ]];  then
+if [[ "$geom" == "y" ]];  then
 echo "%geom"
 cat input.txt
 echo "end
@@ -72,20 +74,32 @@ echo "*" ) > $NAME-Goat.inp
 echo "#!/bin/bash -l
 #SBATCH -J Goat-$NAME
 #SBATCH -t $TIME
-#SBATCH --ntasks-per-node $CORES
+#SBATCH --ntasks-per-node $cores
 #SBATCH --nodes 1
 #SBATCH --account=$acc
-#SBATCH --mem-per-cpu=$MEM
-#SBATCH -p small
+#SBATCH --mem-per-cpu=$memcore
+#SBATCH -p $queue
 
 export ORCADIR=$orcadir
 module purge
 module load orca/6.1.1
 
-\$ORCADIR/orca $NAME-Goat.inp > $NAME-Goat.out
+# Utilize the shared nodes' local storage capabilities.
+# Note: max capacity is 20 GB.
+cp \$SLURM_SUBMIT_DIR/$NAME-Goat.inp \$TMPDIR/
+cd \$TMPDIR
+
+\$ORCADIR/orca $NAME-Goat.inp > \$SLURM_SUBMIT_DIR/$NAME-Goat.out
+
+# Return to the submission directory and save the output files.
+cd \$SLURM_SUBMIT_DIR
+cp -r \$TMPDIR .
+mv \$SLURM_JOBID/* .
+rmdir \$SLURM_JOBID
 seff \$SLURM_JOBID
 " > $NAME-Goat.job
 
 sbatch $NAME-Goat.job
 
 rm input.txt
+
