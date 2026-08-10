@@ -29,12 +29,6 @@ read qh
 nano input.txt
 fi
 
-# If Frequencies were specified (and written last!) in the keyword input, ask if user wants to turn off rhe quasi-harmonic approximation
-if [ ${key: -4} == "Freq" ] || [ ${key: -4} == "FREQ" ] ; then
-echo "RRHO? (y/n)"
-read rrho
-fi
-
 echo "Number of parallel processes?"
 read cores
 echo "Memory per core?"
@@ -93,13 +87,14 @@ echo "end
 "
 fi
 
-if [[ "$rrho" == "y" ]];  then
+# If Frequencies were specified (and written last!) in the keyword input, turn Quasi-RRHO off and use simple HO instead.
+# Motivation: Better the devil you know.
+if [ ${key: -4} == "Freq" ] || [ ${key: -4} == "FREQ" ] ; then
 echo "%freq"
 echo "QuasiRRHO False"
 echo "end
 "
 fi
-
 
 echo "* xyz $cm";
 tail -n +3 $NAME.xyz;
@@ -130,7 +125,9 @@ echo "end
 "
 fi
 
-if [[ "$rrho" == "y" ]];  then
+# If Frequencies were specified (and written last!) in the keyword input, turn Quasi-RRHO off and use simple HO instead.
+# Motivation: Better the devil you know.
+if [ ${key: -4} == "Freq" ] || [ ${key: -4} == "FREQ" ] ; then
 echo "%freq"
 echo "QuasiRRHO False"
 echo "end

@@ -41,7 +41,7 @@ ssr = sum((fit-Compdata['Rate'])**2)
 ssd = sum((Compdata['Rate']-np.mean(Compdata['Rate']))**2)
 R2 = 1 -ssr/ssd
 
-print('Rounded fit parameters:')
+print('Rounded fit parameters, k(T)=A T^n exp(-Ea/T) :')
 print('A',scinot.format(10**A))
 print('n',n)
 print('Ea/K',Ea)

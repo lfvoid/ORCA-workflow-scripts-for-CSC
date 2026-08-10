@@ -1,6 +1,8 @@
 #!/bin/bash
 # Command: findcloggers queue
 
+snakepit="/users/lfranzon/ORCA_Workflow_Scripts/Snakepit"
+
 q=$(echo $1)
 
 squeue --format="%.10i %.9P %.10j %.5C %.5m %.8u %.8T %.10M %.10l %.6D %R"  > fullqueue.txt
@@ -17,7 +19,7 @@ done
 
 
 module load python-data
-python /users/lfranzon/Snakepit/Printtimes.py
+python $snakepit/Printtimes.py
 
 cat Cloggerlist.txt | sed 's/-/ /g' | sort -nk2
 

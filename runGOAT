@@ -12,7 +12,7 @@ echo "Note: Script is written to utilize the shared node local scratch, which ha
 g=$(echo $1)
 
 # If no input is given, use the first xyz file in the directory.
-if [ -z "$g" ]; then g=$(ls *xyz | head -1 ); fi
+if [ -z "$g" ]; then g=$(ls *xyz | grep -v 'trj\.xyz$' | head -1 ); fi
 
 echo "Level of theory? Method Basis"
 read THEO
@@ -101,5 +101,4 @@ seff \$SLURM_JOBID
 
 sbatch $NAME-Goat.job
 
-rm input.txt
 
