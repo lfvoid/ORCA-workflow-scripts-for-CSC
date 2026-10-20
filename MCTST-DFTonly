@@ -18,7 +18,7 @@ echo "Your files:"
 ls
 
 #########################################################################################
-# STEP 1: Extract Coupled-Cluster energy corrections from reactant, TS, and Product files.
+# STEP 1: Extract information from reactant and product output files.
 ##########################################################################################
 
 echo "Include tunneling correction? y/n"

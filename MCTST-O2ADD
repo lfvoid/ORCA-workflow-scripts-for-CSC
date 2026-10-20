@@ -1,0 +1,179 @@
+#!/bin/bash
+#############################################################################################
+# Script for Multi-Conformer Transition State Theory Calculations with Temperature Dependence
+# This version is for BIMOLECULAR REACTIONS where the other reactant is O2.
+# by Lauri Franzon
+#############################################################################################
+
+##################################################################################################
+# Note: These TST scripts are built on the assumption that output files have the naming convention
+# PrefixN-DFTsuffix.out or PrefixN-DFTsuffix-CCSD(T)suffix.out
+# Where N is an integer. This is crucial for the code's recognition of which file is which.
+##################################################################################################
+
+# For other users: Change this variable name to the location of your python scripts.
+snakepit="/users/lfranzon/ORCA_Workflow_Scripts/Snakepit"
+
+echo "Tunneling correction not supported for O2 addition! These are likely not worth the trouble of R...O2 PRC optimizations."
+
+echo "Your files:"
+ls
+
+#########################################################################################
+# STEP 1: Extract information from a reactant output files
+##########################################################################################
+
+echo "Give one reactant output file for reference."
+read Rref
+
+# Extract mass of the reactant.
+Rmass=$(grep "Total Mass" $Rref.out | awk '{print $4}')
+
+echo "Name of DFT Opt+Freq file for the O2 molecule"
+read O2file
+
+# Extract mass of O2.
+O2mass=$(grep "Total Mass" $O2file.out | awk '{print $4}')
+
+#####################################################################
+#STEP 2: Count the R & TS conformers and extract necessary variables.
+#####################################################################
+
+echo "DFT Opt+Freq output file name ending? (for example DFT or wB)"
+read suffix
+
+# Count the number of vibrational modes for each system.
+nov=$( grep "total number of vibrations considered is" $Rref.out | tail -1 | awk '{print $8}' )
+# Number of lines to grep from ORCA vibrational output
+let "lines=nov+1"
+
+# The corresponding numbers for O2 and the TS:
+novO2=1
+let "linesO2=novO2+1"
+let "novTS=nov+6" # Vibrational modes of reactant + 6 from O2
+let "TSlines=novTS+7"    # A slightly different Frequency extraction command is needed to include the negative frequency.
+
+# Write the columns headers for the Reactant conformer DataFrame.
+(echo -n "n Energy ZPE Gibbs Dip A B C" 
+for (( i=1; i<=$nov; i++ ))
+do
+    echo -n " v$i"
+done
+echo ) > Reactant1_conformers.txt
+
+echo "Base name of REACTANT final conformer optimization (e.g. Criegee...suffix.out)"
+read ROPT
+
+# Count the number of reactant conformers.
+# NOTE FOR OTHER USERS: The assumption here is that all final DFT optimization outputs are named ...wB.out after wB97X-D3. This is my convention. Feel free to change it if necessary,
+# but note that the line below must exclusively count the DFT optimization output files. 
+Rnum=$(ls $ROPT*$suffix.out | wc -l)
+echo "$Rnum reactant conformers"
+
+# Loop over the output files.
+k=0
+for r in $ROPT*$suffix.out; do
+        k=$((k+1))
+        # Exctract DFT energy.
+        ener=$(grep 'FINAL SINGLE POINT ENERGY' $r | tail -1 | awk '{printf "%.7f",$5}')
+        # Extract the Zero-point energy
+        zpe=$(grep 'Zero point energy' $r | tail -1 | awk '{print $5}')
+        # Extract Gibbs free energy at 298.15 K (for determining global minimum reactant)
+        gibbs=$(grep "Final Gibbs free energy" $r | tail -1 | awk '{print $6}')
+        # Extract dipole moment
+        dipole=$(grep "Magnitude (Debye)" $r | awk '{print $4}')
+        # Extract rotational constants.
+        rots=$(grep "Rotational constants in cm-1:" $r | tail -1 | awk '{print $5,$6,$7}' | xargs | tr ' ' ' ')
+        # Extract vibrational frequencies.
+        vibs=$(grep "All vibrations are strictly harmonic" -A$lines $r | tail -$nov | awk '{print $2}' | xargs | tr ' ' ' ')
+        # Save info in text file.
+        ( echo "$k $ener $zpe $gibbs $dipole $rots $vibs" ) >> Reactant1_conformers.txt
+done
+
+# Extract the same information for the single O2 output file.
+# Write the columns headers for the Reactant conformer DataFrame.
+(echo -n "n Energy ZPE Gibbs Dip A B C"
+for (( i=1; i<=$novO2; i++ ))
+do
+    echo -n " v$i"
+done
+echo ) > Reactant2_conformers.txt
+
+# Exctract DFT energy.
+ener=$(grep 'FINAL SINGLE POINT ENERGY' $O2file.out | tail -1 | awk '{printf "%.7f",$5}')
+# Extract the Zero-point energy
+zpe=$(grep 'Zero point energy' $O2file.out | tail -1 | awk '{print $5}')
+# Extract Gibbs free energy at 298.15 K (for determining global minimum reactant)
+gibbs=$(grep "Final Gibbs free energy" $O2file.out | tail -1 | awk '{print $6}')
+# Extract dipole moment
+dipole=$(grep "Magnitude (Debye)" $O2file.out | awk '{print $4}')
+# Extract rotational constants.
+rots=$(grep "Rotational constants in cm-1:" $O2file.out | tail -1 | awk '{print $5,$6,$7}' | xargs | tr ' ' ' ')
+# Extract vibrational frequencies.
+vibs=$(grep "All vibrations are strictly harmonic" -A$linesO2 $O2file.out | tail -$novO2 | awk '{print $2}' | xargs | tr ' ' ' ')
+# Save info in text file.
+( echo "1 $ener $zpe $gibbs $dipole $rots $vibs" ) >> Reactant2_conformers.txt
+
+# STEP 2.2: Now the transition state conformers.
+
+echo "Name of TRANSITION STATE final conformer optimization"
+read TSOPT
+
+# Count the number of reactant conformers
+TSnum=$(ls $TSOPT*$suffix.out | wc -l)
+echo "$TSnum unique TS Saddle points"
+
+# Write the columns headers for the Transition State  conformer DataFrame.
+(echo -n "n Energy ZPE Gibbs Dip A B C" 
+for (( i=1; i<=$novTS; i++ ))
+do
+    echo -n " v$i"
+done
+echo ) > TS_conformers.txt
+
+# Loop over the output files.
+k=0
+for t in $TSOPT*$suffix.out; do
+        k=$((k+1))
+        # Exctract DFT energy.
+        ener=$(grep 'FINAL SINGLE POINT ENERGY' $t | tail -1 | awk '{printf "%.7f",$5}')
+        # Extract Zero-point energy
+        zpe=$(grep 'Zero point energy' $t | tail -1 | awk '{print $5}')
+        # Extract Gibbs free energy at 298.15 K (for determining most likely TS saddle point)
+        gibbs=$(grep "Final Gibbs free energy" $t | tail -1 | awk '{print $6}')
+        # Extract dipole moment
+        dipole=$(grep "Magnitude (Debye)" $t | awk '{print $4}')
+        # Extract rotational constants.
+        rots=$(grep "Rotational constants in cm-1:" $t | tail -1 | awk '{print $5,$6,$7}' | xargs | tr ' ' ' ')
+        # Extract vibrational frequencies. Note difference from previous loop! The negative frequency is included here.
+        vibs=$(grep "Scaling factor for frequencies" -A$TSlines $t | tail -$novTS | awk '{print $2}' | xargs | tr ' ' ' ')
+        # Save info in text file.
+        ( echo "$k $ener $zpe $gibbs $dipole $rots $vibs" ) >> TS_conformers.txt
+done
+
+
+################################################
+# STEP 3: Do all the necessary number crunching.
+################################################
+
+echo "Calculate over a range of temperatures? (y/n)"
+read Trange
+if [ "$Trange" == "y" ]; then
+echo "Low T? default 250.0 K"
+read lowT
+if [ -z "$lowT" ]; then lowT="250.0"; fi
+
+echo "High T? Default 315.0 K"
+read highT
+if [ -z "$highT" ]; then highT="315.0"; fi
+
+else
+lowT="298.0"
+highT="298.0"
+fi
+
+module load python-data
+
+# TS degeneracy automatically set to 1/3 due to the spin multiplicity of O2. For example, if both the TS and reacant are doublets, 2/(2*3) = 1/3
+python $snakepit/MCTSTBimole.py $Trange $lowT $highT 0 0 0 0 0 0 $Rmass $O2mass 0 0 0 0 0.333 'notunneling' 'noG' 'O2'
+

@@ -26,13 +26,13 @@ kj=sc.physical_constants['Hartree energy'][0]*sc.N_A*0.001
 
 # Apply the energy cutoff:
 if Ecut > 0:
-    LowE=ConfE[(ConfE.E-ConfE.E.min())<Ecut/kj].index+1
-    HighE=ConfE[(ConfE.E-ConfE.E.min())>Ecut/kj].index+1
+    LowE=ConfE[(ConfE.E+ConfE.ZPE-(ConfE.E+ConfE.ZPE).min())<Ecut/kj].index+1
+    HighE=ConfE[(ConfE.E+ConfE.ZPE-(ConfE.E+ConfE.ZPE).min())>Ecut/kj].index+1
 else:
     LowE=ConfE.index+1
 
 # Make columns with the relative conformer electronic & Gibbs free energies.
-ConfE['Erel']=np.around(kj*(ConfE.E-ConfE.E.min()),3)
+ConfE['Erel']=np.around(kj*(ConfE.E+ConfE.ZPE-(ConfE.E+ConfE.ZPE).min()),3)
 ConfE['Grel']=np.around(kj*(ConfE.Gibbs-ConfE.Gibbs.min()),3)
 
 # Print out which files to keep and which to delete:

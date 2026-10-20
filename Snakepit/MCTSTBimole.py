@@ -23,6 +23,7 @@ IRCCC = float(sys.argv[14])-float(sys.argv[15])       # Coupled-Cluster energy c
 Deg = float(sys.argv[16])                             # Reaction path degeneracy to multiply the final rate with.
 tunnelswitch = str(sys.argv[17])                      # Boolean to switch off tunneling if so desired.
 gswitch = str(sys.argv[18])                           # "G" if DFT calculations were done with Gaussian.
+O2switch = str(sys.argv[19])                          # "O2" if the second reactant is O2. 
 
 # Read the information on the R, TS & P conformers.
 R1c = read_csv('Reactant1_conformers.txt',sep=' ')
@@ -63,8 +64,13 @@ if gswitch == "G":
 # DEFINE FUNCTIONS
 ##################################
 
-# Long-range transition state theory rate coefficient for dipole-dipole interactions.
+# Long-range transition state theory rate coefficient.
 def LRTST(dip1,dip2,T):
+    kau = 5.42*mu**(-1/2) * dip1*dip2**(2/3)*ea0**(-4/3) * (kha*T)**(-1/6) # dipole-dipole capture rate
+    return kau*autocm3
+
+# Long-range transition state theory rate coefficient for dipole-quadrupole interactions.
+def LRTSTQ(dip1,dip2,T):
     kau = 5.42*mu**(-1/2) * dip1*dip2**(2/3)*ea0**(-4/3) * (kha*T)**(-1/6)
     return kau*autocm3
 
@@ -72,8 +78,13 @@ def LRTST(dip1,dip2,T):
 def lnQv(vib,T):
     return -kha*T*log(1-exp(-coef*vib/T))
 
-def lnQr(s,Ar,Br,Cr,T):  # symmetry number, rotational constants, Temperature
+# Rotational contribution to kT ln Q
+def lnQr(s,Ar,Br,Cr,T):
     return kha*T*log((T/coef)**1.5*sqrt(pi/(Ar*Br*Cr))/s)
+
+# Rotational contribution to kT ln Q when the reactant is O2
+def lnQrO2(Br,T):
+    return kha*T*log(T/(coef*2*Br))
 
 # Grimme's Quasi-Harmonic intrapolation kT ln Q. In case it is ever wanted.
 def lnQHRO(vib,Ar,Br,Cr,T):
@@ -137,15 +148,16 @@ for r in range(len(R1c)):
     # Replace Gibbs free energy (round to 8 decimals for the output version)
     R1c.iloc[r,3]=round(R1c.iloc[r]['Energy']+R1c.iloc[r]['ZPE']+kha*298-rotlnQ-viblnQ,8)
 
-for r in range(len(R2c)):
-    # Rotational kT ln Q contribution. Assume sigma = 1
-    rotlnQ = lnQr(1,R2c.iloc[r]['A'],R2c.iloc[r]['B'],R2c.iloc[r]['C'],298.0)
-    # Vibrational kT ln Q contribution. Loop over vibrational frequencies
-    viblnQ=0.0
-    for v in range(8,R2c.shape[1]):
-        viblnQ=viblnQ+lnQv(R2c.iloc[r,v],298.0)
-    # Replace Gibbs free energy (round to 8 decimals for the output version)
-    R2c.iloc[r,3]=round(R2c.iloc[r]['Energy']+R2c.iloc[r]['ZPE']+kha*298-rotlnQ-viblnQ,8)
+if O2switch!='O2': # Bypass local minimum comparison for O2
+    for r in range(len(R2c)):
+        # Rotational kT ln Q contribution. Assume sigma = 1
+        rotlnQ = lnQr(1,R2c.iloc[r]['A'],R2c.iloc[r]['B'],R2c.iloc[r]['C'],298.0)
+        # Vibrational kT ln Q contribution. Loop over vibrational frequencies
+        viblnQ=0.0
+        for v in range(8,R2c.shape[1]):
+            viblnQ=viblnQ+lnQv(R2c.iloc[r,v],298.0)
+        # Replace Gibbs free energy (round to 8 decimals for the output version)
+        R2c.iloc[r,3]=round(R2c.iloc[r]['Energy']+R2c.iloc[r]['ZPE']+kha*298-rotlnQ-viblnQ,8)
 
 # Correct Gibbs free energy for TS conformers. Ignore imaginary frequency.
 for t in range(len(TSc)):
@@ -288,6 +300,7 @@ tf[:] = tf[:] * amu**-1.5 * h**2 * 1e+6/sqrt(k)
 kcanTST=empty(len(T))
 kMCLRTST=empty(len(T))
 kMCLRTST[:] = 0.0    # I could aso use the zeros command, so perhaps this is paranoia.
+rateE=empty([len(T),len(TSc)])
 
 u = open('MCTSTRates.txt','w+')
 u.write('T'+'\t'+'Rate'+'\t'+'MCLRTST'+'\t'+'canonicalTST'+'\t'+'kappa'+'\t'+'QRovib'+'\t'+'Exp'+'\t'+'Conformer'+'\t'+'Constants'+'\n')
@@ -316,8 +329,11 @@ for t in range(len(T)):
     lnq=empty(len(R2c))
     # Correct Gibbs free energy for reactant conformers
     for r in range(len(R2c)):
-        # Rotational kT ln Q contribution. Assume sigma = 1
-        rotlnQ = lnQr(1,R2c.iloc[r]['A'],R2c.iloc[r]['B'],R2c.iloc[r]['C'],T[t])
+        # Rotational kT ln Q contribution. 
+        if O2switch=='O2':
+            rotlnQ = lnQrO2(R2c.iloc[r]['B'],T[t])
+        else:
+            rotlnQ = lnQr(1,R2c.iloc[r]['A'],R2c.iloc[r]['B'],R2c.iloc[r]['C'],T[t]) # Assume sigma = 1 for nonlinear reactants.
         # Vibrational kT ln Q contribution. Loop over vibrational frequencies
         viblnQ=0.0
         for v in range(8,R2c.shape[1]-1):   # -1 because we added the ln Q column earlier
@@ -351,12 +367,17 @@ for t in range(len(T)):
 
     kcanTST[t]=Deg*tf[t]*sum(rateE[t])*kappa[t]/RBfactor # Canonical TST rate
 
-    # Compute the LRTST rate coefficient for every reactant conformer pair and take the Boltzmann-weighted average.
-    for r1 in range(len(R1c)):
-        for r2 in range(len(R2c)):
-            kMCLRTST[t]=kMCLRTST[t]+LRTST(R1c.iloc[r1]['Dip'],R2c.iloc[r2]['Dip'],T[t])* \
-            exp(-(R1c['Gibbs'].iloc[r1]-R1c['Gibbs'].iloc[R1min])/(kha*T[t]))*exp(-(R2c['Gibbs'].iloc[r2]-R2c['Gibbs'].iloc[R2min])/(kha*T[t]))
-    kMCLRTST[t]=kMCLRTST[t]/RBfactor # Correct rate coefficient by dividing by the sums of conformer populations.
+    # For O2 associations, we set k_LRTST to an arbitrary collision-limited value to ensure that the barrier crossing is the limiting step. 
+    if O2switch=='O2':
+        kMCLRTST[t]=5e-11 
+
+    else:
+        # Compute the LRTST rate coefficient for every reactant conformer pair and take the Boltzmann-weighted average.
+        for r1 in range(len(R1c)):
+            for r2 in range(len(R2c)):
+                kMCLRTST[t]=kMCLRTST[t]+LRTST(R1c.iloc[r1]['Dip'],R2c.iloc[r2]['Dip'],T[t])* \
+                exp(-(R1c['Gibbs'].iloc[r1]-R1c['Gibbs'].iloc[R1min])/(kha*T[t]))*exp(-(R2c['Gibbs'].iloc[r2]-R2c['Gibbs'].iloc[R2min])/(kha*T[t]))
+        kMCLRTST[t]=kMCLRTST[t]/RBfactor # Correct rate coefficient by dividing by the sums of conformer populations.
 
     # Write data to file.
     u.write(str(T[t])+'\t'+str(kMCLRTST[t]*kcanTST[t]/(kMCLRTST[t]+kcanTST[t]))+'\t'+str(kMCLRTST[t])+'\t'+str(kcanTST[t])+'\t'+str(kappa[t])+'\t'+ \
@@ -372,7 +393,7 @@ print('Rates calculated. Results in MCTSTRates.txt.')
 lnq298=-kha*298*log( 101325 * h**3 * k**-2.5 * amu**-1.5 )
 lnq298=lnq298-kha*298*log((2*pi)**-1.5 * 298**-2.5 * (R1mass+R2mass)**1.5 * R1mass**-1.5 * R2mass**-1.5)
 # Rotational component of -kT lnQ
-lnq298=lnq298-lnQr(1,TSc.iloc[TSmin]['A'],TSc.iloc[TSmin]['B'],TSc.iloc[TSmin]['C'],298.0)+lnQr(1,R1c.iloc[R1min]['A'],R1c.iloc[R1min]['B'],R1c.iloc[R1min]['C'],298.0)+lnQr(1,R2c.iloc[R2min]['A'],R2c.iloc[R2min]['B'],R2c.iloc[R2min]['C'],298.0)
+lnq298=lnq298-lnQr(1,TSc.iloc[TSmin]['A'],TSc.iloc[TSmin]['B'],TSc.iloc[TSmin]['C'],298.0)+lnQr(1,R1c.iloc[R1min]['A'],R1c.iloc[R1min]['B'],R1c.iloc[R1min]['C'],298.0)+lnQrO2(R2c.iloc[R2min]['B'],298.0)
 # Vibrational component of -kT lnQ
 for v in range(8,R1c.shape[1]-1):
     lnq298=lnq298+lnQv(R1c.iloc[R1min,v],298.0)
